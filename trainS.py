@@ -31,7 +31,7 @@ def get_args():
     parser.add_argument('--task', type=str, default='S4')  # S4, S10
     parser.add_argument('--method', type=str, default='MAM')  # DQN, doubleDQN, duelingDQN, PPO, MAM, A2C
     parser.add_argument('--model', type=str, default='Attention')  # Soft, Concat, Attention
-    parser.add_argument('--order', type=int, default=1)
+    parser.add_argument('--order', type=int, default=2)
 
     # S4case118, S4case300, S10case118, S10case300, S10case9241
     parser.add_argument('--env_id', type=str, default='None')
@@ -79,7 +79,7 @@ def get_args():
     parser.add_argument('--resume-path', type=str, default=None)
     parser.add_argument('--repeat-per-collect', type=int, default=2)
 
-    parser.add_argument('--hidden_type', type=str, default='GIN')
+    parser.add_argument('--hidden_type', type=str, default='MLP')
 
     args = parser.parse_known_args()[0]
     return args

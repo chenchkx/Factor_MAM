@@ -598,7 +598,8 @@ class SelfAttentionNetWeighted(nn.Module):
         self.task_num = task_num
         self.f = nn.Softmax(dim=2)
         self.f0 = nn.Softmax(dim=0)
-        if hidden_type in ['GIN','GCN']:
+        self.hidden_type = hidden_type
+        if hidden_type in ['GIN','GCN','GIN_Factor']:
             self.is_gnn = True
         else:
             self.is_gnn = False
@@ -621,6 +622,19 @@ class SelfAttentionNetWeighted(nn.Module):
         elif hidden_type == 'GIN':
             self.w_k = GINlayer(in_feats=4, n_hidden=64, n_classes=64, n_layers=2, device=self.device)
             self.w_v = GINlayer(in_feats=4, n_hidden=64, n_classes=64, n_layers=2, device=self.device)            
+        elif hidden_type == 'GIN_Factor':
+            # p value convolution: Active power
+            self.w_k_p = GINlayer(in_feats=1, n_hidden=64, n_classes=16, n_layers=2, device=self.device)
+            self.w_v_p = GINlayer(in_feats=1, n_hidden=64, n_classes=16, n_layers=2, device=self.device)
+            # q value convolution: Reactive power 
+            self.w_k_q = GINlayer(in_feats=1, n_hidden=64, n_classes=16, n_layers=2, device=self.device)
+            self.w_v_q = GINlayer(in_feats=1, n_hidden=64, n_classes=16, n_layers=2, device=self.device)  
+            # v value convolution: Voltage
+            self.w_k_v = GINlayer(in_feats=1, n_hidden=64, n_classes=16, n_layers=2, device=self.device)
+            self.w_v_v = GINlayer(in_feats=1, n_hidden=64, n_classes=16, n_layers=2, device=self.device)  
+            # t value convolution: Phase angle
+            self.w_k_t = GINlayer(in_feats=1, n_hidden=64, n_classes=16, n_layers=2, device=self.device)
+            self.w_v_t = GINlayer(in_feats=1, n_hidden=64, n_classes=16, n_layers=2, device=self.device)  
         else:
             raise Exception('Invalid layer type, must be either "GCN" or "MLP"')
 
@@ -666,11 +680,30 @@ class SelfAttentionNetWeighted(nn.Module):
         q = torch.matmul(self.alpha, q).reshape(ba, 1, 64)  # b*1*64, weighted pattern
         # q = torch.mean(q, dim=1).reshape(-1, 1, 64)  # b*1*64, mean pattern
 
-        if self.is_gnn:
+        if self.hidden_type in ['GCN','GIN']:
             bg = dgl.batch([self.g for _ in range(ba)]).to(self.device)
             state_in = state_in.reshape(-1, 4)
             k = self.w_k(bg, state_in).reshape(-1, bus_num, 64)  # b*bus_num*64
             v = self.w_v(bg, state_in).reshape(-1, bus_num, 64)  # b*bus_num*64
+        elif self.hidden_type in ['GIN_Factor']:
+            bg = dgl.batch([self.g for _ in range(ba)]).to(self.device)
+            state_in = state_in.reshape(-1, 4)
+            # p value convolution: Active power
+            k_p = self.w_k_p(bg, state_in[:,0].reshape(-1,1))
+            v_p = self.w_v_p(bg, state_in[:,0].reshape(-1,1))
+            # q value convolution: Reactive power 
+            k_q = self.w_k_q(bg, state_in[:,1].reshape(-1,1))
+            v_q = self.w_v_q(bg, state_in[:,1].reshape(-1,1))            
+            # v value convolution: Voltage
+            k_v = self.w_k_v(bg, state_in[:,2].reshape(-1,1))
+            v_v = self.w_v_v(bg, state_in[:,2].reshape(-1,1))   
+            # t value convolution: Phase angle
+            k_t = self.w_k_t(bg, state_in[:,3].reshape(-1,1))
+            v_t = self.w_v_t(bg, state_in[:,3].reshape(-1,1))
+
+            k = torch.cat([k_p, k_q, k_v, k_t], dim=1).reshape(-1, bus_num, 64)  # b*bus_num*64
+            v = torch.cat([v_p, v_q, v_v, v_t], dim=1).reshape(-1, bus_num, 64)  # b*bus_num*64 
+
         else:
             k = self.w_k(state_in).reshape(ba, -1, 64)  # b*1*64
             v = self.w_v(state_in).reshape(ba, -1, 64)  # b*1*64
