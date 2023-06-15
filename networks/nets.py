@@ -7,6 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from dgl.nn.pytorch import GraphConv
 from dgl.nn.pytorch import GINConv
+from dgl.nn.pytorch import GINEConv
 from collections import OrderedDict
 import dgl
 import networks.init as init
@@ -550,23 +551,60 @@ class GINlayer(nn.Module):
         self.layers.append(GINConv(apply_func = nn.Sequential(nn.Linear(in_feats, n_hidden),
                                     nn.BatchNorm1d(n_hidden),
                                     nn.ReLU(),
-                                    nn.Linear(n_hidden, n_hidden)
-                                    ),
+                                    nn.Linear(n_hidden, n_hidden)),
                                     aggregator_type= 'sum'))
         # hidden layers
         for i in range(n_layers - 1):
             self.layers.append(GINConv(apply_func = nn.Sequential(nn.Linear(n_hidden, n_hidden),
                                     nn.BatchNorm1d(n_hidden),
                                     nn.ReLU(),
-                                    nn.Linear(n_hidden, n_hidden)
-                                    ),
+                                    nn.Linear(n_hidden, n_hidden)),
                                     aggregator_type='sum'))
         # output layer
         self.layers.append(GINConv(apply_func = nn.Sequential(nn.Linear(n_hidden, n_hidden),
                                 nn.BatchNorm1d(n_hidden),
                                 nn.ReLU(),
-                                nn.Linear(n_hidden, n_classes)
-                                ),
+                                nn.Linear(n_hidden, n_classes)),
+                                aggregator_type='sum'))
+
+    def forward(self, g, features):
+        h = features
+        for i, layer in enumerate(self.layers):
+            h = layer(g, h)
+            if i != self.n_layers:
+                h = F.relu(h)
+        return h
+
+class GINElayer(nn.Module):
+    def __init__(self,
+                 in_feats,
+                 n_hidden,
+                 n_classes,
+                 n_layers,
+                 device='cpu'):
+        super(GINElayer, self).__init__()
+        self.device = device
+        self.layers = nn.ModuleList()
+        # self.in_feats = in_feats
+        self.n_layers = n_layers
+        # input layer
+        self.layers.append(GINEConv(apply_func = nn.Sequential(nn.Linear(in_feats, n_hidden),
+                                    nn.BatchNorm1d(n_hidden),
+                                    nn.ReLU(),
+                                    nn.Linear(n_hidden, n_hidden)),
+                                    aggregator_type= 'sum'))
+        # hidden layers
+        for i in range(n_layers - 1):
+            self.layers.append(GINEConv(apply_func = nn.Sequential(nn.Linear(n_hidden, n_hidden),
+                                    nn.BatchNorm1d(n_hidden),
+                                    nn.ReLU(),
+                                    nn.Linear(n_hidden, n_hidden)),
+                                    aggregator_type='sum'))
+        # output layer
+        self.layers.append(GINEConv(apply_func = nn.Sequential(nn.Linear(n_hidden, n_hidden),
+                                nn.BatchNorm1d(n_hidden),
+                                nn.ReLU(),
+                                nn.Linear(n_hidden, n_classes)),
                                 aggregator_type='sum'))
 
     def forward(self, g, features):
@@ -583,7 +621,9 @@ class SelfAttentionNetWeighted(nn.Module):
     def __init__(self, output_shape,
                  em_input_shape, state_input_shape,
                  task_num: int,
-                 hidden_type='MLP', graph=None,
+                 hidden_type='MLP', 
+                 graph_u = None,
+                 graph_d = None,
                  dueling_param=None, device='cuda',
                  ):
 
@@ -593,7 +633,8 @@ class SelfAttentionNetWeighted(nn.Module):
         self.state_input_shape = state_input_shape
         self.output_shape = output_shape
         self.device = device
-        self.g = graph
+        self.graph_u = graph_u
+        self.graph_d = graph_d
         self.use_dueling = dueling_param is not None
         self.task_num = task_num
         self.f = nn.Softmax(dim=2)

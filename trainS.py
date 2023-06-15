@@ -31,7 +31,7 @@ def get_args():
     parser.add_argument('--task', type=str, default='S4')  # S4, S10
     parser.add_argument('--method', type=str, default='MAM')  # DQN, doubleDQN, duelingDQN, PPO, MAM, A2C
     parser.add_argument('--model', type=str, default='Attention')  # Soft, Concat, Attention
-    parser.add_argument('--order', type=int, default=1)
+    parser.add_argument('--order', type=int, default=2)
 
     # S4case118, S4case300, S10case118, S10case300, S10case9241
     parser.add_argument('--env_id', type=str, default='None')
@@ -101,7 +101,7 @@ def dqn(args=get_args()):
     args.state_dim = env.observation_space.shape[0] or env.observation_space.n
     args.action_dim = env.action_space.shape or env.action_space.n
     print(args.state_dim, args.action_dim, env.n_net)
-    g = env.graph
+    # g = env.graph
     args.episode_per_test = env.n_net
 
     train_env = ts.env.SubprocVectorEnv([lambda: actEnv(args) for _ in range(args.train_env_num)], wait_num=5, timeout=0.2)  # 并行采样
@@ -202,7 +202,8 @@ def dqn(args=get_args()):
                                      em_input_shape=env.n_line,
                                      state_input_shape=args.state_dim - task_num * env.n_line,
                                      task_num=task_num,
-                                     graph=g,
+                                     graph_u=env.graph_u,
+                                     graph_d=env.graph_d,
                                      hidden_type=args.hidden_type,
                                      dueling_param=args.dueling_param,
                                      device='cuda',

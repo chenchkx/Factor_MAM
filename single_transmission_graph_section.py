@@ -25,7 +25,13 @@ class TransmissionSectionEnv(gym.Env):
         else:
             assert False, 'env_id not exist'
         nxgraph = pt.create_nxgraph(self.original_net)
-        self.graph = dgl.from_networkx(nxgraph)
+        self.graph_u = dgl.from_networkx(nxgraph)   # 构建无向图  undirected graph
+        u_list, v_list = [],[]
+        u_list.extend(list(self.original_net.line['from_bus']))
+        u_list.extend(list(self.original_net.trafo['hv_bus']))
+        v_list.extend(list(self.original_net.line['to_bus']))
+        v_list.extend(list(self.original_net.trafo['lv_bus']))
+        self.graph_d = dgl.graph((torch.tensor(u_list),torch.tensor(v_list)))  # 构建有向图   directed graph
         self.n_bus = self.original_net.bus.shape[0]  # 电网母线个数
         self.n_gen = self.original_net.gen.shape[0]  # 电网发电机个数
 
@@ -148,9 +154,32 @@ class TransmissionSectionEnv(gym.Env):
         result['p_mw'] = (result['p_mw'] - np.mean(result['p_mw'])) / np.std(result['p_mw'])
         result['q_mvar'] = (result['q_mvar'] - np.mean(result['q_mvar'])) / np.std(result['q_mvar'])
         result['vm_pu'] = result['vm_pu'] - np.mean(result['vm_pu'])
+
         x = torch.tensor(np.array(result), dtype=torch.float32).reshape(-1)  # result_bus
 
         state = torch.cat((x, self._current_section_onehot()), dim=-1)
+
+        p_line = self.current_net.res_line['p_from_mw'] - self.current_net.res_line['p_to_mw']
+        q_line = self.current_net.res_line['q_from_mvar'] - self.current_net.res_line['q_to_mvar']
+        v_line = self.current_net.res_line['vm_from_pu'] - self.current_net.res_line['vm_to_pu']
+        t_line = self.current_net.res_line['va_from_degree'] - self.current_net.res_line['va_to_degree']
+
+        p_trafo = self.current_net.res_trafo['p_hv_mw'] - self.current_net.res_trafo['p_lv_mw']
+        q_trafo = self.current_net.res_trafo['q_hv_mvar'] - self.current_net.res_trafo['q_lv_mvar']
+        v_trafo = self.current_net.res_trafo['vm_hv_pu'] - self.current_net.res_trafo['vm_lv_pu']
+        t_trafo = self.current_net.res_trafo['va_hv_degree'] - self.current_net.res_trafo['va_lv_degree']
+
+        p_dv = np.concatenate((np.array(p_line),np.array(p_trafo)))
+        q_dv = np.concatenate((np.array(q_line),np.array(q_trafo)))
+        v_dv = np.concatenate((np.array(v_line),np.array(v_trafo)))
+        t_dv = np.concatenate((np.array(t_line),np.array(t_trafo)))
+
+        p_dv = torch.tensor(p_dv/np.linalg.norm(p_dv))
+        q_dv = torch.tensor(p_dv/np.linalg.norm(q_dv))
+        v_dv = torch.tensor(p_dv/np.linalg.norm(v_dv))
+        t_dv = torch.tensor(p_dv/np.linalg.norm(t_dv))
+
+        state = torch.cat((state, p_dv,q_dv,v_dv,t_dv),dim=-1)
 
         return state
 
