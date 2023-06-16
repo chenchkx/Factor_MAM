@@ -169,15 +169,15 @@ class TransmissionSectionEnv(gym.Env):
         v_trafo = self.current_net.res_trafo['vm_hv_pu'] - self.current_net.res_trafo['vm_lv_pu']
         t_trafo = self.current_net.res_trafo['va_hv_degree'] - self.current_net.res_trafo['va_lv_degree']
 
-        p_dv = np.concatenate((np.array(p_line),np.array(p_trafo)))
-        q_dv = np.concatenate((np.array(q_line),np.array(q_trafo)))
-        v_dv = np.concatenate((np.array(v_line),np.array(v_trafo)))
-        t_dv = np.concatenate((np.array(t_line),np.array(t_trafo)))
+        p_dv = torch.cat((torch.tensor(p_line),torch.tensor(p_trafo)))
+        q_dv = torch.cat((torch.tensor(q_line),torch.tensor(q_trafo)))
+        v_dv = torch.cat((torch.tensor(v_line),torch.tensor(v_trafo)))
+        t_dv = torch.cat((torch.tensor(t_line),torch.tensor(t_trafo)))
 
-        p_dv = torch.tensor(p_dv/np.linalg.norm(p_dv))
-        q_dv = torch.tensor(p_dv/np.linalg.norm(q_dv))
-        v_dv = torch.tensor(p_dv/np.linalg.norm(v_dv))
-        t_dv = torch.tensor(p_dv/np.linalg.norm(t_dv))
+        p_dv = torch.nn.functional.normalize(p_dv,p=2,dim=-1)
+        q_dv = torch.nn.functional.normalize(q_dv,p=2,dim=-1)
+        v_dv = torch.nn.functional.normalize(v_dv,p=2,dim=-1)
+        t_dv = torch.nn.functional.normalize(t_dv,p=2,dim=-1)
 
         state = torch.cat((state, p_dv,q_dv,v_dv,t_dv),dim=-1)
 
