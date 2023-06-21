@@ -20,7 +20,7 @@ from utils import NewLogger as TensorboardLogger
 from offpolicy import offpolicy_trainer
 from onpolicy import onpolicy_trainer
 from single_transmission_graph_section import TransmissionSectionEnv as singleEnv  # single env for S4,S10 task
-from networks import SoftNet, MLPBase, SelfAttentionNetWeighted,SelfAttentionNetWeighted_KAIXUAN
+from networks import SoftNet, MLPBase, SelfAttentionNetWeighted, SelfAttentionNetWeighted_Factor
 from tianshou.utils.net.discrete import Actor, Critic
 from torch.utils.tensorboard import SummaryWriter
 
@@ -79,7 +79,7 @@ def get_args():
     parser.add_argument('--resume-path', type=str, default=None)
     parser.add_argument('--repeat-per-collect', type=int, default=2)
 
-    parser.add_argument('--hidden_type', type=str, default='GINE_Factor')
+    parser.add_argument('--hidden_type', type=str, default='MLP_Factor')
 
     args = parser.parse_known_args()[0]
     return args
@@ -198,26 +198,29 @@ def dqn(args=get_args()):
 
         if args.method == 'MAM':
             args.model = 'Attention'
-            # net = SelfAttentionNetWeighted(output_shape=args.action_dim,
-            #                          em_input_shape=env.n_line,
-            #                          state_input_shape=args.state_dim - task_num * env.n_line,
-            #                          task_num=task_num,
-            #                          graph_u=env.graph_u,
-            #                          graph_d=env.graph_d,
-            #                          hidden_type=args.hidden_type,
-            #                          dueling_param=args.dueling_param,
-            #                          device='cuda',
-            #                          ).to(args.device)
-            net = SelfAttentionNetWeighted_KAIXUAN(output_shape=args.action_dim,
-                                     em_input_shape=env.n_line,
-                                     state_input_shape=args.state_dim - task_num * env.n_line,
-                                     task_num=task_num,
-                                     graph_u=env.graph_u,
-                                     graph_d=env.graph_d,
-                                     hidden_type=args.hidden_type,
-                                     dueling_param=args.dueling_param,
-                                     device='cuda',
-                                     ).to(args.device)
+            if 'Factor' in args.hidden_type:
+                net = SelfAttentionNetWeighted_Factor(output_shape=args.action_dim,
+                            em_input_shape=env.n_line,
+                            state_input_shape=args.state_dim - task_num * env.n_line,
+                            task_num=task_num,
+                            graph_u=env.graph_u,
+                            graph_d=env.graph_d,
+                            hidden_type=args.hidden_type,
+                            dueling_param=args.dueling_param,
+                            device='cuda',
+                            ).to(args.device)
+            else:
+                net = SelfAttentionNetWeighted(output_shape=args.action_dim,
+                                        em_input_shape=env.n_line,
+                                        state_input_shape=args.state_dim - task_num * env.n_line,
+                                        task_num=task_num,
+                                        graph_u=env.graph_u,
+                                        graph_d=env.graph_d,
+                                        hidden_type=args.hidden_type,
+                                        dueling_param=args.dueling_param,
+                                        device='cuda',
+                                        ).to(args.device)
+                
         elif args.model == 'Soft':
             net = SoftNet(output_shape=args.action_dim,
                           base_type=MLPBase,

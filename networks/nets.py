@@ -505,6 +505,23 @@ class MultiHeadAttention(nn.Module):
 
         return out
 
+class MLPlayer(nn.Module):
+    def __init__(self,
+                 in_feats,
+                 n_hidden,
+                 n_classes,
+                 device='cpu'):
+        super(MLPlayer, self).__init__()
+        self.device = device
+        self.mlp = nn.Sequential(nn.Linear(in_feats, n_hidden),
+                                    nn.BatchNorm1d(n_hidden),
+                                    nn.ReLU(),
+                                    nn.Linear(n_hidden, n_classes))
+
+    def forward(self, nfeat):
+        h = self.mlp(nfeat)
+        return h
+
 
 class GCNlayer(nn.Module):
     def __init__(self,
@@ -548,21 +565,12 @@ class GINlayer(nn.Module):
         # self.in_feats = in_feats
         self.n_layers = n_layers
         # input layer
-        self.layers.append(GINConv(apply_func = nn.Sequential(nn.Linear(in_feats, n_hidden),
-                                    nn.BatchNorm1d(n_hidden),
-                                    nn.ReLU(),
-                                    nn.Linear(n_hidden, n_hidden))))
+        self.layers.append(GINConv(apply_func = MLPlayer(in_feats,n_hidden,n_hidden)))
         # hidden layers
         for i in range(n_layers - 1):
-            self.layers.append(GINConv(apply_func = nn.Sequential(nn.Linear(n_hidden, n_hidden),
-                                    nn.BatchNorm1d(n_hidden),
-                                    nn.ReLU(),
-                                    nn.Linear(n_hidden, n_hidden))))
+            self.layers.append(GINConv(apply_func = MLPlayer(n_hidden,n_hidden,n_hidden)))
         # output layer
-        self.layers.append(GINConv(apply_func = nn.Sequential(nn.Linear(n_hidden, n_hidden),
-                                nn.BatchNorm1d(n_hidden),
-                                nn.ReLU(),
-                                nn.Linear(n_hidden, n_classes))))
+        self.layers.append(GINConv(apply_func = MLPlayer(n_hidden,n_hidden,n_classes)))
 
     def forward(self, g, features):
         h = features
@@ -589,23 +597,23 @@ class GINElayer(nn.Module):
         self.n_layers = n_layers
         # input layer
         self.edge_layers.append(nn.Linear(in_feats, in_feats))
-        self.gine_layers.append(GINEConv(apply_func = nn.Sequential(nn.Linear(in_feats, n_hidden))))
-                                    # nn.BatchNorm1d(n_hidden),
-                                    # nn.ReLU(),
-                                    # nn.Linear(n_hidden, n_hidden))))
+        self.gine_layers.append(GINEConv(apply_func = nn.Sequential(nn.Linear(in_feats, n_hidden),
+                                    nn.BatchNorm1d(n_hidden),
+                                    nn.ReLU(),
+                                    nn.Linear(n_hidden, n_hidden))))
         # hidden layers
         for i in range(n_layers - 1):
             self.edge_layers.append(nn.Linear(in_feats, n_hidden))
-            self.gine_layers.append(GINEConv(apply_func = nn.Sequential(nn.Linear(n_hidden, n_hidden))))
-                                    # nn.BatchNorm1d(n_hidden),
-                                    # nn.ReLU(),
-                                    # nn.Linear(n_hidden, n_hidden))))
+            self.gine_layers.append(GINEConv(apply_func = nn.Sequential(nn.Linear(n_hidden, n_hidden),
+                                    nn.BatchNorm1d(n_hidden),
+                                    nn.ReLU(),
+                                    nn.Linear(n_hidden, n_hidden))))
         # output layer
         self.edge_layers.append(nn.Linear(in_feats, n_hidden))
-        self.gine_layers.append(GINEConv(apply_func = nn.Sequential(nn.Linear(n_hidden, n_hidden))))
-                                # nn.BatchNorm1d(n_hidden),
-                                # nn.ReLU(),
-                                # nn.Linear(n_hidden, n_classes))))
+        self.gine_layers.append(GINEConv(apply_func = nn.Sequential(nn.Linear(n_hidden, n_hidden),
+                                nn.BatchNorm1d(n_hidden),
+                                nn.ReLU(),
+                                nn.Linear(n_hidden, n_classes))))
 
     def forward(self, g, nfeat, efeat):
         h = nfeat
@@ -616,8 +624,8 @@ class GINElayer(nn.Module):
         return h
 
 
-# MAM-KAIXUAN-Test
-class SelfAttentionNetWeighted_KAIXUAN(nn.Module):
+# MAM-Factor
+class SelfAttentionNetWeighted_Factor(nn.Module):
     def __init__(self, output_shape,
                  em_input_shape, state_input_shape,
                  task_num: int,
@@ -645,24 +653,30 @@ class SelfAttentionNetWeighted_KAIXUAN(nn.Module):
         else:
             self.is_gnn = False
 
-        if hidden_type == 'MLP':
-            self.w_k = nn.Sequential(OrderedDict([
-                ('k1', nn.Linear(int(state_input_shape), 128, bias=False)),
-                ('kRelu', nn.ReLU()),
-                ('k2', nn.Linear(128, 64, bias=False))
-            ]))
-
-            self.w_v = nn.Sequential(OrderedDict([
-                ('v1', nn.Linear(int(state_input_shape), 128, bias=False)),
-                ('vRelu', nn.ReLU()),
-                ('v2', nn.Linear(128, 64, bias=False))
-            ]))
-        elif hidden_type == 'GCN':
-            self.w_k = GCNlayer(in_feats=4, n_hidden=64, n_classes=64, n_layers=2, device=self.device)
-            self.w_v = GCNlayer(in_feats=4, n_hidden=64, n_classes=64, n_layers=2, device=self.device)
-        elif hidden_type == 'GIN':
-            self.w_k = GINlayer(in_feats=4, n_hidden=64, n_classes=64, n_layers=2, device=self.device)
-            self.w_v = GINlayer(in_feats=4, n_hidden=64, n_classes=64, n_layers=2, device=self.device)            
+        if hidden_type == 'MLP_Factor':
+            self.w_k_p = MLPlayer(in_feats=1, n_hidden=128, n_classes=64, device=self.device)
+            self.w_v_p = MLPlayer(in_feats=1, n_hidden=128, n_classes=64, device=self.device)
+            # q value convolution: Reactive power 
+            self.w_k_q = MLPlayer(in_feats=1, n_hidden=128, n_classes=64, device=self.device)
+            self.w_v_q = MLPlayer(in_feats=1, n_hidden=128, n_classes=64, device=self.device)  
+            # v value convolution: Voltage
+            self.w_k_v = MLPlayer(in_feats=1, n_hidden=128, n_classes=64, device=self.device)
+            self.w_v_v = MLPlayer(in_feats=1, n_hidden=128, n_classes=64, device=self.device)  
+            # t value convolution: Phase angle
+            self.w_k_t = MLPlayer(in_feats=1, n_hidden=128, n_classes=64, device=self.device)
+            self.w_v_t = MLPlayer(in_feats=1, n_hidden=128, n_classes=64, device=self.device)  
+        elif hidden_type == 'GCN_Factor':
+            self.w_k_p = GCNlayer(in_feats=1, n_hidden=64, n_classes=64, n_layers=2, device=self.device)
+            self.w_v_p = GCNlayer(in_feats=1, n_hidden=64, n_classes=64, n_layers=2, device=self.device)
+            # q value convolution: Reactive power 
+            self.w_k_q = GCNlayer(in_feats=1, n_hidden=64, n_classes=64, n_layers=2, device=self.device)
+            self.w_v_q = GCNlayer(in_feats=1, n_hidden=64, n_classes=64, n_layers=2, device=self.device)  
+            # v value convolution: Voltage
+            self.w_k_v = GCNlayer(in_feats=1, n_hidden=64, n_classes=64, n_layers=2, device=self.device)
+            self.w_v_v = GCNlayer(in_feats=1, n_hidden=64, n_classes=64, n_layers=2, device=self.device)  
+            # t value convolution: Phase angle
+            self.w_k_t = GCNlayer(in_feats=1, n_hidden=64, n_classes=64, n_layers=2, device=self.device)
+            self.w_v_t = GCNlayer(in_feats=1, n_hidden=64, n_classes=64, n_layers=2, device=self.device)      
         elif hidden_type == 'GIN_Factor':
             # p value convolution: Active power
             self.w_k_p = GINlayer(in_feats=1, n_hidden=64, n_classes=64, n_layers=2, device=self.device)
@@ -676,19 +690,6 @@ class SelfAttentionNetWeighted_KAIXUAN(nn.Module):
             # t value convolution: Phase angle
             self.w_k_t = GINlayer(in_feats=1, n_hidden=64, n_classes=64, n_layers=2, device=self.device)
             self.w_v_t = GINlayer(in_feats=1, n_hidden=64, n_classes=64, n_layers=2, device=self.device)  
-        elif hidden_type == 'GINE_Factor':
-            # p value convolution with edge feature: Active power
-            self.w_k_p = GINElayer(in_feats=1, n_hidden=64, n_classes=64, n_layers=2, device=self.device)
-            self.w_v_p = GINElayer(in_feats=1, n_hidden=64, n_classes=64, n_layers=2, device=self.device)
-            # q value convolution with edge feature: Reactive power 
-            self.w_k_q = GINElayer(in_feats=1, n_hidden=64, n_classes=64, n_layers=2, device=self.device)
-            self.w_v_q = GINElayer(in_feats=1, n_hidden=64, n_classes=64, n_layers=2, device=self.device)  
-            # v value convolution with edge feature: Voltage
-            self.w_k_v = GINElayer(in_feats=1, n_hidden=64, n_classes=64, n_layers=2, device=self.device)
-            self.w_v_v = GINElayer(in_feats=1, n_hidden=64, n_classes=64, n_layers=2, device=self.device)  
-            # t value convolution with edge feature: Phase angle
-            self.w_k_t = GINElayer(in_feats=1, n_hidden=64, n_classes=64, n_layers=2, device=self.device)
-            self.w_v_t = GINElayer(in_feats=1, n_hidden=64, n_classes=64, n_layers=2, device=self.device)  
         else:
             raise Exception('Invalid layer type, must be either "GCN" or "MLP"')
 
@@ -699,7 +700,7 @@ class SelfAttentionNetWeighted_KAIXUAN(nn.Module):
             ('q2', nn.Linear(128, self.dim_represent)) 
         ]))
 
-        self.alpha = nn.Parameter(torch.Tensor([1/self.task_num for _ in range(task_num)]), requires_grad=True)
+        self.alpha = nn.Parameter(torch.Tensor([1/self.task_num*4 for _ in range(task_num*4)]), requires_grad=True)
 
         # dueling param: {'hidden_sizes': [128]}
         if self.use_dueling:  # dueling DQN
@@ -726,63 +727,54 @@ class SelfAttentionNetWeighted_KAIXUAN(nn.Module):
             x = torch.tensor(x, dtype=torch.float).to(self.device)
         state_in, embedding_in, edges_in = torch.split(x, [self.state_input_shape, self.em_input_shape*self.task_num, 
                                                             self.graph_d.num_edges()*4], dim=1) # 472+task_num*172+edges_num*4
-        embedding_in = torch.reshape(embedding_in, [-1, self.task_num, self.em_input_shape])   # b*task_num*line_num
+        embedding_in = torch.reshape(embedding_in, [-1, self.task_num, self.em_input_shape])    # b*task_num*line_num
         edges_in_p, edges_in_q, edges_in_v, edges_in_t = torch.split(edges_in, [self.graph_d.num_edges(),self.graph_d.num_edges(),
                                                             self.graph_d.num_edges(),self.graph_d.num_edges()], dim=1) # edges_num,edges_num,edges_num,edges_num
-        
+        embedding_task = []
+        for i in range(self.task_num):
+            embedding_mask = embedding_in[:,i,:]
+            embedding_task.append((embedding_mask*edges_in_p[:,0:self.em_input_shape]).unsqueeze(1))
+            embedding_task.append((embedding_mask*edges_in_q[:,0:self.em_input_shape]).unsqueeze(1))
+            embedding_task.append((embedding_mask*edges_in_v[:,0:self.em_input_shape]).unsqueeze(1))
+            embedding_task.append((embedding_mask*edges_in_t[:,0:self.em_input_shape]).unsqueeze(1))
+
         ba = state_in.shape[0]  # batch size
         bus_num = int(self.state_input_shape/4)
 
-        q = self.w_q(embedding_in)  # b*task_num*64
+        q = self.w_q(torch.cat((embedding_task),dim=1))  # b*task_num*(64*4)
         self.alpha.data = self.f0(self.alpha)
         q = torch.matmul(self.alpha, q).reshape(ba, 1, -1)  # b*1*64, weighted pattern
         # q = torch.mean(q, dim=1).reshape(-1, 1, 64)  # b*1*64, mean pattern
 
-        if self.hidden_type in ['GCN','GIN']:
-            bg = dgl.batch([self.graph_u for _ in range(ba)]).to(self.device)
-            state_in = state_in.reshape(-1, 4)
-            k = self.w_k(bg, state_in).reshape(-1, bus_num, self.dim_represent)  # b*bus_num*64
-            v = self.w_v(bg, state_in).reshape(-1, bus_num, self.dim_represent)  # b*bus_num*64
-        elif self.hidden_type in ['GIN_Factor']:
+
+        if self.hidden_type in ['GIN_Factor','GCN_Factor']:
             bg = dgl.batch([self.graph_u for _ in range(ba)]).to(self.device)
             state_in = state_in.reshape(-1, 4)
             # p value convolution: Active power
-            k_p = self.w_k_p(bg, state_in[:,0].reshape(-1,1))
-            v_p = self.w_v_p(bg, state_in[:,0].reshape(-1,1))
+            k_p = self.w_k_p(bg, state_in[:,0].reshape(-1,1)).reshape(-1, bus_num, self.dim_represent)
+            v_p = self.w_v_p(bg, state_in[:,0].reshape(-1,1)).reshape(-1, bus_num, self.dim_represent)
             # q value convolution: Reactive power 
-            k_q = self.w_k_q(bg, state_in[:,1].reshape(-1,1))
-            v_q = self.w_v_q(bg, state_in[:,1].reshape(-1,1))            
+            k_q = self.w_k_q(bg, state_in[:,1].reshape(-1,1)).reshape(-1, bus_num, self.dim_represent)
+            v_q = self.w_v_q(bg, state_in[:,1].reshape(-1,1)).reshape(-1, bus_num, self.dim_represent)            
             # v value convolution: Voltage
-            k_v = self.w_k_v(bg, state_in[:,2].reshape(-1,1))
-            v_v = self.w_v_v(bg, state_in[:,2].reshape(-1,1))   
+            k_v = self.w_k_v(bg, state_in[:,2].reshape(-1,1)).reshape(-1, bus_num, self.dim_represent)
+            v_v = self.w_v_v(bg, state_in[:,2].reshape(-1,1)).reshape(-1, bus_num, self.dim_represent)   
             # t value convolution: Phase angle
-            k_t = self.w_k_t(bg, state_in[:,3].reshape(-1,1))
-            v_t = self.w_v_t(bg, state_in[:,3].reshape(-1,1))
-
-            k = torch.cat([k_p, k_q, k_v, k_t], dim=1).reshape(-1, bus_num, self.dim_represent)  # b*bus_num*self.dim_represent(64*4)
-            v = torch.cat([v_p, v_q, v_v, v_t], dim=1).reshape(-1, bus_num, self.dim_represent)  # b*bus_num*self.dim_represent(64*4) 
-        elif self.hidden_type in ['GINE_Factor']:
-            bg = dgl.batch([self.graph_d for _ in range(ba)]).to(self.device) # 有向图
-            state_in = state_in.reshape(-1, 4)    
-            # p value convolution: Active power
-            k_p = self.w_k_p(bg, state_in[:,0].reshape(-1,1),edges_in_p.reshape(-1,1)).reshape(-1, bus_num, self.dim_represent)
-            v_p = self.w_v_p(bg, state_in[:,0].reshape(-1,1),edges_in_p.reshape(-1,1)).reshape(-1, bus_num, self.dim_represent)
-            # q value convolution: Reactive power 
-            k_q = self.w_k_q(bg, state_in[:,1].reshape(-1,1),edges_in_q.reshape(-1,1)).reshape(-1, bus_num, self.dim_represent)
-            v_q = self.w_v_q(bg, state_in[:,1].reshape(-1,1),edges_in_q.reshape(-1,1)).reshape(-1, bus_num, self.dim_represent)           
-            # v value convolution: Voltage
-            k_v = self.w_k_v(bg, state_in[:,2].reshape(-1,1),edges_in_v.reshape(-1,1)).reshape(-1, bus_num, self.dim_represent)
-            v_v = self.w_v_v(bg, state_in[:,2].reshape(-1,1),edges_in_v.reshape(-1,1)).reshape(-1, bus_num, self.dim_represent)   
-            # t value convolution: Phase angle
-            k_t = self.w_k_t(bg, state_in[:,3].reshape(-1,1),edges_in_t.reshape(-1,1)).reshape(-1, bus_num, self.dim_represent)
-            v_t = self.w_v_t(bg, state_in[:,3].reshape(-1,1),edges_in_t.reshape(-1,1)).reshape(-1, bus_num, self.dim_represent)
-
-            # k = torch.cat([k_p, k_q, k_v, k_t], dim=1).reshape(-1, bus_num, self.dim_represent)  # b*bus_num*self.dim_represent(64*4)
-            # v = torch.cat([v_p, v_q, v_v, v_t], dim=1).reshape(-1, bus_num, self.dim_represent)  # b*bus_num*self.dim_represent(64*4) 
+            k_t = self.w_k_t(bg, state_in[:,3].reshape(-1,1)).reshape(-1, bus_num, self.dim_represent)
+            v_t = self.w_v_t(bg, state_in[:,3].reshape(-1,1)).reshape(-1, bus_num, self.dim_represent)
 
         else:
-            k = self.w_k(state_in).reshape(ba, -1, self.dim_represent)  # b*1*64
-            v = self.w_v(state_in).reshape(ba, -1, self.dim_represent)  # b*1*64
+            k_p = self.w_k_p(state_in[:,0].reshape(-1,1)).reshape(ba, -1, self.dim_represent)
+            v_p = self.w_v_p(state_in[:,0].reshape(-1,1)).reshape(ba, -1, self.dim_represent)
+            # q value convolution: Reactive power 
+            k_q = self.w_k_q(state_in[:,1].reshape(-1,1)).reshape(ba, -1, self.dim_represent)
+            v_q = self.w_v_q(state_in[:,1].reshape(-1,1)).reshape(ba, -1, self.dim_represent)            
+            # v value convolution: Voltage
+            k_v = self.w_k_v(state_in[:,2].reshape(-1,1)).reshape(ba, -1, self.dim_represent)
+            v_v = self.w_v_v(state_in[:,2].reshape(-1,1)).reshape(ba, -1, self.dim_represent)   
+            # t value convolution: Phase angle
+            k_t = self.w_k_t(state_in[:,3].reshape(-1,1)).reshape(ba, -1, self.dim_represent)
+            v_t = self.w_v_t(state_in[:,3].reshape(-1,1)).reshape(ba, -1, self.dim_represent)
 
         temperature = k_p.shape[0] ** 0.5
 
@@ -860,39 +852,11 @@ class SelfAttentionNetWeighted(nn.Module):
         elif hidden_type == 'GIN':
             self.w_k = GINlayer(in_feats=4, n_hidden=64, n_classes=64, n_layers=2, device=self.device)
             self.w_v = GINlayer(in_feats=4, n_hidden=64, n_classes=64, n_layers=2, device=self.device)            
-        elif hidden_type == 'GIN_Factor':
-            # p value convolution: Active power
-            self.w_k_p = GINlayer(in_feats=1, n_hidden=64, n_classes=64, n_layers=2, device=self.device)
-            self.w_v_p = GINlayer(in_feats=1, n_hidden=64, n_classes=64, n_layers=2, device=self.device)
-            # q value convolution: Reactive power 
-            self.w_k_q = GINlayer(in_feats=1, n_hidden=64, n_classes=64, n_layers=2, device=self.device)
-            self.w_v_q = GINlayer(in_feats=1, n_hidden=64, n_classes=64, n_layers=2, device=self.device)  
-            # v value convolution: Voltage
-            self.w_k_v = GINlayer(in_feats=1, n_hidden=64, n_classes=64, n_layers=2, device=self.device)
-            self.w_v_v = GINlayer(in_feats=1, n_hidden=64, n_classes=64, n_layers=2, device=self.device)  
-            # t value convolution: Phase angle
-            self.w_k_t = GINlayer(in_feats=1, n_hidden=64, n_classes=64, n_layers=2, device=self.device)
-            self.w_v_t = GINlayer(in_feats=1, n_hidden=64, n_classes=64, n_layers=2, device=self.device)  
-        elif hidden_type == 'GINE_Factor':
-            # p value convolution with edge feature: Active power
-            self.w_k_p = GINElayer(in_feats=1, n_hidden=64, n_classes=64, n_layers=2, device=self.device)
-            self.w_v_p = GINElayer(in_feats=1, n_hidden=64, n_classes=64, n_layers=2, device=self.device)
-            # q value convolution with edge feature: Reactive power 
-            self.w_k_q = GINElayer(in_feats=1, n_hidden=64, n_classes=64, n_layers=2, device=self.device)
-            self.w_v_q = GINElayer(in_feats=1, n_hidden=64, n_classes=64, n_layers=2, device=self.device)  
-            # v value convolution with edge feature: Voltage
-            self.w_k_v = GINElayer(in_feats=1, n_hidden=64, n_classes=64, n_layers=2, device=self.device)
-            self.w_v_v = GINElayer(in_feats=1, n_hidden=64, n_classes=64, n_layers=2, device=self.device)  
-            # t value convolution with edge feature: Phase angle
-            self.w_k_t = GINElayer(in_feats=1, n_hidden=64, n_classes=64, n_layers=2, device=self.device)
-            self.w_v_t = GINElayer(in_feats=1, n_hidden=64, n_classes=64, n_layers=2, device=self.device)  
+
         else:
             raise Exception('Invalid layer type, must be either "GCN" or "MLP"')
 
-        if 'Factor' in hidden_type:
-            self.dim_represent = 64*4   # 向量集联，所以维度为64*4
-        else:
-            self.dim_represent = 64     
+        self.dim_represent = 64     
         self.w_q = nn.Sequential(OrderedDict([
             ('q1', nn.Linear(em_input_shape, 128)),
             ('qRelu', nn.ReLU()),
@@ -943,43 +907,6 @@ class SelfAttentionNetWeighted(nn.Module):
             state_in = state_in.reshape(-1, 4)
             k = self.w_k(bg, state_in).reshape(-1, bus_num, self.dim_represent)  # b*bus_num*64
             v = self.w_v(bg, state_in).reshape(-1, bus_num, self.dim_represent)  # b*bus_num*64
-        elif self.hidden_type in ['GIN_Factor']:
-            bg = dgl.batch([self.graph_u for _ in range(ba)]).to(self.device)
-            state_in = state_in.reshape(-1, 4)
-            # p value convolution: Active power
-            k_p = self.w_k_p(bg, state_in[:,0].reshape(-1,1))
-            v_p = self.w_v_p(bg, state_in[:,0].reshape(-1,1))
-            # q value convolution: Reactive power 
-            k_q = self.w_k_q(bg, state_in[:,1].reshape(-1,1))
-            v_q = self.w_v_q(bg, state_in[:,1].reshape(-1,1))            
-            # v value convolution: Voltage
-            k_v = self.w_k_v(bg, state_in[:,2].reshape(-1,1))
-            v_v = self.w_v_v(bg, state_in[:,2].reshape(-1,1))   
-            # t value convolution: Phase angle
-            k_t = self.w_k_t(bg, state_in[:,3].reshape(-1,1))
-            v_t = self.w_v_t(bg, state_in[:,3].reshape(-1,1))
-
-            k = torch.cat([k_p, k_q, k_v, k_t], dim=1).reshape(-1, bus_num, self.dim_represent)  # b*bus_num*self.dim_represent(64*4)
-            v = torch.cat([v_p, v_q, v_v, v_t], dim=1).reshape(-1, bus_num, self.dim_represent)  # b*bus_num*self.dim_represent(64*4) 
-        elif self.hidden_type in ['GINE_Factor']:
-            bg = dgl.batch([self.graph_d for _ in range(ba)]).to(self.device) # 有向图
-            state_in = state_in.reshape(-1, 4)    
-            # p value convolution: Active power
-            k_p = self.w_k_p(bg, state_in[:,0].reshape(-1,1),edges_in_p.reshape(-1,1))
-            v_p = self.w_v_p(bg, state_in[:,0].reshape(-1,1),edges_in_p.reshape(-1,1))
-            # q value convolution: Reactive power 
-            k_q = self.w_k_q(bg, state_in[:,1].reshape(-1,1),edges_in_q.reshape(-1,1))
-            v_q = self.w_v_q(bg, state_in[:,1].reshape(-1,1),edges_in_q.reshape(-1,1))            
-            # v value convolution: Voltage
-            k_v = self.w_k_v(bg, state_in[:,2].reshape(-1,1),edges_in_v.reshape(-1,1))
-            v_v = self.w_v_v(bg, state_in[:,2].reshape(-1,1),edges_in_v.reshape(-1,1))   
-            # t value convolution: Phase angle
-            k_t = self.w_k_t(bg, state_in[:,3].reshape(-1,1),edges_in_t.reshape(-1,1))
-            v_t = self.w_v_t(bg, state_in[:,3].reshape(-1,1),edges_in_t.reshape(-1,1))
-
-            k = torch.cat([k_p, k_q, k_v, k_t], dim=1).reshape(-1, bus_num, self.dim_represent)  # b*bus_num*self.dim_represent(64*4)
-            v = torch.cat([v_p, v_q, v_v, v_t], dim=1).reshape(-1, bus_num, self.dim_represent)  # b*bus_num*self.dim_represent(64*4) 
-
         else:
             k = self.w_k(state_in).reshape(ba, -1, self.dim_represent)  # b*1*64
             v = self.w_v(state_in).reshape(ba, -1, self.dim_represent)  # b*1*64
