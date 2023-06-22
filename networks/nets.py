@@ -829,7 +829,7 @@ class SelfAttentionNetWeighted(nn.Module):
         self.f = nn.Softmax(dim=2)
         self.f0 = nn.Softmax(dim=0)
         self.hidden_type = hidden_type
-        if hidden_type in ['GIN','GCN','GIN_Factor']:
+        if hidden_type in ['GIN','GCN']:
             self.is_gnn = True
         else:
             self.is_gnn = False
